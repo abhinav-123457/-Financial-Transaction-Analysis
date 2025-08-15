@@ -192,7 +192,7 @@ def process_credit_debit_data(data):
         last_date_in_data = max(valid_dates)
     else:
         raise ValueError("No valid dates found in the data")
-    target_date = last_date_in_data.replace(hour=16, minute=48, second=0, microsecond=0)  # 04:48 PM IST
+    target_date = last_date_in_data  # Remove time component, keep only date
     daily_rate = 0.18 * 0.18  # 18% of 18% per day = 3.24% per day
     for credit in credits:
         credit_date = credit['date']
@@ -324,7 +324,7 @@ def display_results(overdue_with_interest, pending_credits, opening_balance, clo
             {'Category': 'Total Debits Processed', 'Amount': f'₹{total_debits:,.2f}'},
             {'Category': 'Computed Closing Balance', 'Amount': f'₹{(opening_balance + total_credits - total_debits):,.2f}' if opening_balance is not None else ''},
             {'Category': 'Actual Closing Balance', 'Amount': f'₹{closing_balance:,.2f}' if closing_balance is not None else ''},
-            {'Category': 'Target Date', 'Amount': target_date.strftime('%d-%m-%Y %H:%M IST')},
+            {'Category': 'Target Date', 'Amount': target_date.strftime('%d-%m-%Y')},
             {'Category': 'Total Principal Due (Overdue)', 'Amount': f'₹{total_unpaid:,.2f}'},
             {'Category': 'Total Interest Accrued', 'Amount': f'₹{total_interest:,.2f}'},
             {'Category': 'GST (18% on Interest)', 'Amount': f'₹{(0.18 * total_interest):,.2f}'},
@@ -339,7 +339,7 @@ def display_results(overdue_with_interest, pending_credits, opening_balance, clo
 def main():
     st.set_page_config(page_title="Credit-Debit Analysis Tool", layout="wide")
     st.title("Credit-Debit Analysis Tool")
-    st.markdown("Upload an Excel file to analyze credit and debit transactions, calculate interest (18% of 18% daily on overdue amounts), and download the results. *Last updated: 04:48 PM IST, August 15, 2025*")
+    st.markdown("Upload an Excel file to analyze credit and debit transactions, calculate interest (18% of 18% daily on overdue amounts), and download the results. *Last updated: August 15, 2025*")
 
     # File uploader
     uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
@@ -379,7 +379,7 @@ def main():
                 col2.metric("Interest Accrued", f"₹{total_interest:,.2f}")
                 col3.metric("GST (18%)", f"₹{(0.18 * total_interest):,.2f}")
                 col4.metric("Total Amount Due", f"₹{total_amount_due:,.2f}")
-                st.write(f"**Target Date:** {target_date.strftime('%d-%m-%Y %H:%M IST')}")
+                st.write(f"**Target Date:** {target_date.strftime('%d-%m-%Y')}")
 
                 # Pie Chart for Breakdown
                 st.header("Breakdown of Total Amount Due")
