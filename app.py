@@ -5,6 +5,46 @@ import plotly.express as px
 import io
 import uuid
 
+# Custom CSS for enhanced styling
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 10px;
+    }
+    .stButton>button {
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 5px;
+        padding: 10px 20px;
+        font-weight: bold;
+    }
+    .stButton>button:hover {
+        background-color: #45a049;
+    }
+    .stFileUploader>label {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+    }
+    .stDataFrame {
+        background-color: white;
+        border-radius: 5px;
+        padding: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1, h2, h3 {
+        color: #1f77b4;
+        font-family: 'Arial', sans-serif;
+    }
+    .sidebar .sidebar-content {
+        background-color: #ffffff;
+        border-right: 1px solid #ddd;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Function to convert date string to datetime object
 def parse_date_to_datetime(date_val):
     try:
@@ -94,7 +134,7 @@ def read_csv_data(uploaded_file):
 
 # Function to calculate balances
 @st.cache_data
-def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate_type='per_day'):
+def calculate_balances(transactions, target_date_str='15-08-2025'):
     if not transactions:
         return [], [], 0, 0, 0, 0, 0, 0
 
@@ -133,7 +173,7 @@ def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate
     pending_credits = []
     total_principal = 0
     total_interest = 0
-    daily_rate = 0.18 if interest_rate_type == 'per_day' else 0.18 / 365
+    daily_rate = 0.18  # 18% per day
 
     for credit in credits:
         credit_date = credit['date']
@@ -301,14 +341,12 @@ def generate_excel(overdue_with_interest, pending_credits, opening_balance, clos
 # Streamlit app
 def main():
     st.title("Financial Transaction Analysis")
-    st.markdown("Upload a CSV file to calculate overdue amounts with 18% interest (per day or per annum).")
+    st.markdown("Upload a CSV file to calculate overdue amounts with **18% per day interest**. View results, a pie chart, and download an Excel report.")
 
-    # Sidebar for inputs
-    st.sidebar.header("Input Options")
-    interest_rate_type = st.sidebar.radio("Select Interest Rate Type:", ["18% Per Day", "18% Per Annum"], index=0)
-    rate_type = 'per_day' if interest_rate_type == "18% Per Day" else 'per_annum'
+    # Sidebar for file upload
+    st.sidebar.header("Upload CSV")
+    uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv", help="Ensure columns: Date, Debit, Credit, 180 days, optional Particulars")
 
-    uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
     if uploaded_file is not None:
         st.success("File uploaded successfully!")
         transactions, opening_balance, closing_balance = read_csv_data(uploaded_file)
@@ -322,17 +360,40 @@ def main():
         st.write(f"Loaded {len(transactions)} transactions.")
 
         with st.spinner("Processing data..."):
-            overdue_with_interest, pending_credits, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due = calculate_balances(transactions, interest_rate_type=rate_type)
+            overdue_with_interest, pending_credits, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due = calculate_balances(transactions)
 
-        # Display summary
-        st.header("Summary")
-        st.write(f"**Total Principal Due (Overdue):** ₹{total_principal:,.2f}")
-        st.write(f"**Total Interest Accrued:** ₹{total_interest:,.2f}")
-        st.write(f"**GST (18% on Interest):** ₹{gst:,.2f}")
-        st.write(f"**Total Amount Due:** ₹{total_amount_due:,.2f}")
+        # Summary Section
+        st.header("Summary", anchor="summary")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Principal Due", f"₹{total_principal:,.2f}")
+        col2.metric("Interest Accrued", f"₹{total_interest:,.2f}")
+        col3.metric("GST (18%)", f"₹{gst:,.2f}")
+        col4.metric("Total Amount Due", f"₹{total_amount_due:,.2f}")
+
+        # Pie Chart for Principal, Interest, GST
+        st.header("Breakdown of Total Amount Due", anchor="pie-chart")
+        if total_principal > 0 or total_interest > 0 or gst > 0:
+            chart_data = pd.DataFrame({
+                'Category': ['Principal', 'Interest', 'GST'],
+                'Amount': [total_principal, total_interest, gst]
+            })
+            fig = px.pie(
+                chart_data,
+                values='Amount',
+                names='Category',
+                title="Total Amount Due Breakdown",
+                color_discrete_sequence=['#1f77b4', '#ff7f0e', '#2ca02c'],
+                hover_data=['Amount'],
+                labels={'Amount': '₹ Amount'}
+            )
+            fig.update_traces(textinfo='percent+label', pull=[0.1, 0, 0], marker=dict(line=dict(color='#000000', width=2)))
+            fig.update_layout(showlegend=True, margin=dict(t=50, b=50, l=50, r=50))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.write("No data to display in pie chart.")
 
         # Overdue Credits Table
-        st.header("Overdue Credits")
+        st.header("Overdue Credits", anchor="overdue-credits")
         if overdue_with_interest:
             overdue_df = pd.DataFrame([
                 {
@@ -345,32 +406,12 @@ def main():
                 }
                 for item in overdue_with_interest
             ])
-            st.dataframe(overdue_df)
-
-            # Bar Chart for Overdue Credits
-            chart_data = pd.DataFrame([
-                {
-                    'Credit Date': item['credit_date'],
-                    'Principal': item['unpaid_amount'],
-                    'Interest': item['interest']
-                }
-                for item in overdue_with_interest
-            ])
-            fig = px.bar(
-                chart_data,
-                x='Credit Date',
-                y=['Principal', 'Interest'],
-                barmode='group',
-                title="Overdue Credits: Principal vs Interest",
-                labels={'value': 'Amount (₹)', 'variable': 'Type'},
-                color_discrete_map={'Principal': '#1f77b4', 'Interest': '#ff7f0e'}
-            )
-            st.plotly_chart(fig)
+            st.dataframe(overdue_df, use_container_width=True)
         else:
             st.write("No overdue amounts found!")
 
         # Pending Credits Table
-        st.header("Pending Credits")
+        st.header("Pending Credits", anchor="pending-credits")
         if pending_credits:
             pending_df = pd.DataFrame([
                 {
@@ -382,17 +423,19 @@ def main():
                 }
                 for item in pending_credits
             ])
-            st.dataframe(pending_df)
+            st.dataframe(pending_df, use_container_width=True)
         else:
             st.write("No pending credits found!")
 
         # Download Excel
+        st.header("Download Report", anchor="download")
         excel_file = generate_excel(overdue_with_interest, pending_credits, opening_balance, closing_balance, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due)
         st.download_button(
             label="Download Excel Report",
             data=excel_file,
             file_name=f"credit_debit_analysis_{uuid.uuid4().hex[:8]}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download-button"
         )
 
 if __name__ == "__main__":
