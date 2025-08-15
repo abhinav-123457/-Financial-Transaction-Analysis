@@ -256,7 +256,7 @@ def process_credit_debit_data(data):
         })
     return overdue_with_interest, pending_credits, total_credits, total_debits, target_date
 
-def display_results(overdue_with_interest, pending_credits, opening_balance, closing_balance, total_credits, total_debits, target_date):
+def display_results(overdue_with_interest, pending_credits, opening_balance, closing_balance, total_credits, total_debits, target_date, transaction_data):
     """
     Write results to an Excel file with sheets for Overdue Amounts, Pending Credits, and Balance Summary.
     Returns the Excel file as a BytesIO buffer for Streamlit download.
@@ -367,7 +367,7 @@ def main():
                 # Process data
                 with st.spinner("Processing data..."):
                     overdue_amounts, pending_credits, total_credits, total_debits, target_date = process_credit_debit_data(transaction_data)
-                    output_buffer = display_results(overdue_amounts, pending_credits, opening_balance, closing_balance, total_credits, total_debits, target_date)
+                    output_buffer = display_results(overdue_amounts, pending_credits, opening_balance, closing_balance, total_credits, total_debits, target_date, transaction_data)
                 
                 # Display summary metrics
                 st.header("Financial Summary")
@@ -408,6 +408,59 @@ def main():
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.write("No data to display in pie chart.")
+
+                # Line Chart: Aggregates by Month
+                st.header("Monthly Transaction and Interest Trends")
+                if transaction_data:
+                    # Prepare data for line chart
+                    df_transactions = pd.DataFrame(transaction_data)
+                    df_transactions['Date'] = pd.to_datetime(df_transactions['Date'], format='%d-%m-%Y')
+                    df_transactions['Month'] = df_transactions['Date'].dt.to_period('M').astype(str)
+                    
+                    # Aggregate credits and debits by month
+                    monthly_data = df_transactions.groupby('Month').agg({
+                        'Credit': 'sum',
+                        'Debit': 'sum'
+                    }).reset_index()
+                    
+                    # Add interest data from overdue amounts
+                    monthly_interest = []
+                    for month in monthly_data['Month']:
+                        month_start = pd.to_datetime(month + '-01')
+                        month_interest = sum(
+                            item['interest'] for item in overdue_amounts
+                            if pd.to_datetime(item['credit_date'], format='%d-%m-%Y').to_period('M') == month_start.to_period('M')
+                        )
+                        monthly_interest.append(month_interest)
+                    monthly_data['Interest'] = monthly_interest
+                    
+                    # Melt data for plotting
+                    monthly_data_melted = monthly_data.melt(id_vars='Month', value_vars=['Credit', 'Debit', 'Interest'], 
+                                                          var_name='Category', value_name='Amount')
+                    
+                    # Create line chart
+                    fig_line = px.line(
+                        monthly_data_melted,
+                        x='Month',
+                        y='Amount',
+                        color='Category',
+                        title="Monthly Credits, Debits, and Interest Accrued",
+                        color_discrete_sequence=['#3498db', '#2ecc71', '#e74c3c'],
+                        labels={'Amount': '₹ Amount', 'Month': 'Month'}
+                    )
+                    fig_line.update_traces(line=dict(width=3))
+                    fig_line.update_layout(
+                        xaxis_title="Month",
+                        yaxis_title="Amount (₹)",
+                        showlegend=True,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        margin=dict(t=50, b=50, l=50, r=50),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)"
+                    )
+                    st.plotly_chart(fig_line, use_container_width=True)
+                else:
+                    st.write("No data to display in line chart.")
 
                 # Display summary
                 st.subheader("Summary")
@@ -464,5 +517,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
