@@ -247,7 +247,7 @@ def calculate_balances(transactions):
             overdue_with_interest.append({
                 'credit_date': credit['original_date'],
                 'credit_amount': credit_amount,
-                'due_date': credit['original_due_date'],
+                'due_date': due_date_obj,
                 'unpaid_amount': balance,
                 'interest': interest,
                 'total_with_interest': balance + interest,
@@ -448,3 +448,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
