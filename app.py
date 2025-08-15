@@ -477,15 +477,6 @@ def main():
                     else:
                         st.write("No data to display in line chart.")
 
-                # Display results
-                st.subheader("Results")
-                st.write("The results have been written to an Excel file with sheets: 'Overdue Amounts', 'Pending Credits', and 'Balance Summary'.")
-                
-                # Provide download link
-                b64 = base64.b64encode(output_buffer.getvalue()).decode()
-                href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="credit_debit_analysis.xlsx">Download Results</a>'
-                st.markdown(href, unsafe_allow_html=True)
-                
                 # Display preview of results
                 if overdue_amounts:
                     st.subheader("Overdue Amounts Preview")
@@ -501,6 +492,15 @@ def main():
                         for item in overdue_amounts
                     ])
                     st.dataframe(overdue_df)
+                
+                # Display results (moved here)
+                st.subheader("Results")
+                st.write("The results have been written to an Excel file with sheets: 'Overdue Amounts', 'Pending Credits', and 'Balance Summary'.")
+                
+                # Provide download link
+                b64 = base64.b64encode(output_buffer.getvalue()).decode()
+                href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="credit_debit_analysis.xlsx">Download Results</a>'
+                st.markdown(href, unsafe_allow_html=True)
                 
                 if pending_credits:
                     st.subheader("Pending Credits Preview")
