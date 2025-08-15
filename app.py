@@ -182,7 +182,7 @@ def calculate_balances(transactions):
     # Determine the last date from transactions
     last_date = max(t['Date'] for t in transactions)
     ist = pytz.timezone('Asia/Kolkata')
-    target_date = last_date.replace(hour=16, minute=32, second=0, microsecond=0)  # 04:32 PM IST
+    target_date = last_date.replace(hour=16, minute=38, second=0, microsecond=0)  # 04:38 PM IST, updated to current time
     target_date = ist.localize(target_date) if target_date.tzinfo is None else target_date.astimezone(ist)
     if target_date is None:
         st.error("No valid dates found in the file. Using current date.")
@@ -363,28 +363,21 @@ def generate_excel(overdue_with_interest, pending_credits, opening_balance, clos
             pending_df.to_excel(writer, sheet_name='Pending Credits', index=False)
         else:
             pd.DataFrame([{'Message': 'No pending credits found!'}]).to_excel(writer, sheet_name='Pending Credits', index=False)
-# Summary DataFrame in app
-summary_data = []
-if opening_balance is not None:
-    summary_data.append({'Category': 'Opening Balance', 'Amount': f'₹{opening_balance:,.2f}'})
-summary_data.append({'Category': 'Total Credits Processed', 'Amount': f'₹{total_credits:,.2f}'})
-summary_data.append({'Category': 'Total Debits Processed', 'Amount': f'₹{total_debits:,.2f}'})
-if opening_balance is not None:
-    computed_closing = opening_balance + total_credits - total_debits
-    summary_data.append({'Category': 'Computed Closing Balance', 'Amount': f'₹{computed_closing:,.2f}'})
-if closing_balance is not None:
-    summary_data.append({'Category': 'Actual Closing Balance', 'Amount': f'₹{closing_balance:,.2f}'})
-summary_data.append({'Category': 'Target Date', 'Amount': target_date.strftime('%d-%m-%Y %H:%M IST')})
-summary_data.append({'Category': 'Total Principal Due (Overdue)', 'Amount': f'₹{total_principal:,.2f}'})
-summary_data.append({'Category': 'Total Interest Accrued', 'Amount': f'₹{total_interest:,.2f}'})
-summary_data.append({'Category': 'GST (18% on Interest)', 'Amount': f'₹{gst:,.2f}'})
-summary_data.append({'Category': 'Total Amount Due', 'Amount': f'₹{total_amount_due:,.2f}'})
 
-summary_df = pd.DataFrame(summary_data)
-
-st.header("Balance Summary")
-st.dataframe(summary_df, use_container_width=True)
-
+        summary_data = [
+            {'Category': 'Opening Balance', 'Amount': f'₹{opening_balance:,.2f}' if opening_balance is not None else ''},
+            {'Category': 'Total Credits Processed', 'Amount': f'₹{total_credits:,.2f}'},
+            {'Category': 'Total Debits Processed', 'Amount': f'₹{total_debits:,.2f}'},
+            {'Category': 'Computed Closing Balance', 'Amount': f'₹{(opening_balance + total_credits - total_debits):,.2f}' if opening_balance is not None else ''},
+            {'Category': 'Actual Closing Balance', 'Amount': f'₹{closing_balance:,.2f}' if closing_balance is not None else ''},
+            {'Category': 'Target Date', 'Amount': target_date.strftime('%d-%m-%Y %H:%M IST')},
+            {'Category': 'Total Principal Due (Overdue)', 'Amount': f'₹{total_principal:,.2f}'},
+            {'Category': 'Total Interest Accrued', 'Amount': f'₹{total_interest:,.2f}'},
+            {'Category': 'GST (18% on Interest)', 'Amount': f'₹{gst:,.2f}'},
+            {'Category': 'Total Amount Due', 'Amount': f'₹{total_amount_due:,.2f}'}
+        ]
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name='Balance Summary', index=False)
 
     output.seek(0)
     return output
@@ -392,7 +385,7 @@ st.dataframe(summary_df, use_container_width=True)
 # Streamlit app
 def main():
     st.title("Financial Transaction Analyzer")
-    st.markdown("Upload a CSV or Excel file to calculate overdue amounts with **18% per day interest**. The target date is the last date in your file at 04:32 PM IST. View results, a pie chart, and download an Excel report. *Last updated: 04:32 PM IST, August 15, 2025*")
+    st.markdown("Upload a CSV or Excel file to calculate overdue amounts with **18% per day interest**. The target date is the last date in your file at 04:38 PM IST. View results, a pie chart, and download an Excel report. *Last updated: 04:38 PM IST, August 15, 2025*")
 
     # Sidebar for file upload
     st.sidebar.header("Upload Your Data")
@@ -421,6 +414,23 @@ def main():
         col3.metric("GST (18%)", f"₹{gst:,.2f}")
         col4.metric("Total Amount Due", f"₹{total_amount_due:,.2f}")
         st.write(f"**Target Date:** {target_date.strftime('%d-%m-%Y %H:%M IST')}")
+
+        # Summary DataFrame
+        summary_data = [
+            {'Category': 'Opening Balance', 'Amount': f'₹{opening_balance:,.2f}' if opening_balance is not None else ''},
+            {'Category': 'Total Credits Processed', 'Amount': f'₹{total_credits:,.2f}'},
+            {'Category': 'Total Debits Processed', 'Amount': f'₹{total_debits:,.2f}'},
+            {'Category': 'Computed Closing Balance', 'Amount': f'₹{(opening_balance + total_credits - total_debits):,.2f}' if opening_balance is not None else ''},
+            {'Category': 'Actual Closing Balance', 'Amount': f'₹{closing_balance:,.2f}' if closing_balance is not None else ''},
+            {'Category': 'Target Date', 'Amount': target_date.strftime('%d-%m-%Y %H:%M IST')},
+            {'Category': 'Total Principal Due (Overdue)', 'Amount': f'₹{total_principal:,.2f}'},
+            {'Category': 'Total Interest Accrued', 'Amount': f'₹{total_interest:,.2f}'},
+            {'Category': 'GST (18% on Interest)', 'Amount': f'₹{gst:,.2f}'},
+            {'Category': 'Total Amount Due', 'Amount': f'₹{total_amount_due:,.2f}'}
+        ]
+        summary_df = pd.DataFrame(summary_data)
+        st.header("Balance Summary")
+        st.dataframe(summary_df, use_container_width=True)
 
         # Pie Chart for Breakdown
         st.header("Breakdown of Total Amount Due")
@@ -498,4 +508,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
