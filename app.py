@@ -65,7 +65,7 @@ st.markdown("""
         border-radius: 10px 0 0 10px;
     }
     .stMetric {
-        background-color: #ffffff;
+        background-color: rgb(38, 39, 48);
         padding: 15px;
         border-radius: 10px;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
@@ -464,3 +464,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
