@@ -4,43 +4,72 @@ from datetime import datetime, timedelta
 import plotly.express as px
 import io
 import uuid
+import pytz
 
 # Custom CSS for enhanced styling
 st.markdown("""
     <style>
     .main {
-        background-color: #f0f2f6;
-        padding: 20px;
-        border-radius: 10px;
+        background: linear-gradient(135deg, #e6f0fa, #f5f9fc);
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+        max-width: 1200px;
+        margin: 0 auto;
     }
     .stButton>button {
-        background-color: #4CAF50;
+        background: linear-gradient(90deg, #2ecc71, #27ae60);
         color: white;
-        border-radius: 5px;
-        padding: 10px 20px;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 30px;
         font-weight: bold;
+        font-size: 16px;
+        transition: transform 0.2s, background 0.2s;
     }
     .stButton>button:hover {
-        background-color: #45a049;
+        transform: scale(1.05);
+        background: linear-gradient(90deg, #27ae60, #219653);
     }
     .stFileUploader>label {
-        font-size: 16px;
+        font-size: 18px;
         font-weight: bold;
-        color: #333;
+        color: #34495e;
+        background-color: #ecf0f1;
+        padding: 12px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+    }
+    .stFileUploader>label:before {
+        content: "📥 ";
     }
     .stDataFrame {
-        background-color: white;
-        border-radius: 5px;
-        padding: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        background-color: #ffffff;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        font-size: 14px;
     }
     h1, h2, h3 {
-        color: #1f77b4;
-        font-family: 'Arial', sans-serif;
+        color: #34495e;
+        font-family: 'Helvetica', sans-serif;
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
     }
     .sidebar .sidebar-content {
+        background: linear-gradient(135deg, #ffffff, #f8fafc);
+        border-right: 2px solid #bdc3c7;
+        padding: 25px;
+        border-radius: 10px 0 0 10px;
+    }
+    .stMetric {
         background-color: #ffffff;
-        border-right: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        text-align: center;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -71,13 +100,19 @@ def days_between(date1_obj, date2_obj):
         return 0
     return max((date2_obj - date1_obj).days, 0)
 
-# Function to read CSV data
+# Function to read CSV or Excel data
 @st.cache_data
-def read_csv_data(uploaded_file):
+def read_file_data(uploaded_file):
     try:
-        df = pd.read_csv(uploaded_file)
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(uploaded_file)
+        else:
+            st.error("Unsupported file format. Please upload a CSV or Excel file.")
+            return None, None, None
     except Exception as e:
-        st.error(f"Error reading CSV file: {e}")
+        st.error(f"Error reading file: {e}")
         return None, None, None
 
     date_col = next((col for col in df.columns if 'date' in col.lower()), 'Date')
@@ -132,20 +167,24 @@ def read_csv_data(uploaded_file):
         })
     return transactions, opening_balance, closing_balance
 
-# Function to calculate balances
+# Function to calculate balances with dynamic target date
 @st.cache_data
-def calculate_balances(transactions, target_date_str='15-08-2025'):
+def calculate_balances(transactions):
     if not transactions:
         return [], [], 0, 0, 0, 0, 0, 0
+
+    # Determine the last date from transactions
+    last_date = max(t['Date'] for t in transactions)
+    ist = pytz.timezone('Asia/Kolkata')
+    target_date = ist.localize(last_date.replace(hour=16, minute=28, second=0, microsecond=0))
+    if target_date is None:
+        st.error("No valid dates found in the file. Using current date.")
+        target_date = datetime.now(ist)
 
     credits = []
     debits = []
     total_credits = 0
     total_debits = 0
-    target_date = parse_date_to_datetime(target_date_str)
-    if target_date is None:
-        st.error(f"Invalid target date: {target_date_str}. Using current date.")
-        target_date = datetime.now()
 
     for row in transactions:
         if row['Credit'] > 0:
@@ -261,10 +300,10 @@ def calculate_balances(transactions, target_date_str='15-08-2025'):
     gst = 0.18 * total_interest
     total_amount_due = total_principal + total_interest + gst
 
-    return overdue_with_interest, pending_credits, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due
+    return overdue_with_interest, pending_credits, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due, target_date
 
 # Function to generate Excel file
-def generate_excel(overdue_with_interest, pending_credits, opening_balance, closing_balance, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due):
+def generate_excel(overdue_with_interest, pending_credits, opening_balance, closing_balance, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due, target_date):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         if overdue_with_interest:
@@ -328,6 +367,7 @@ def generate_excel(overdue_with_interest, pending_credits, opening_balance, clos
             summary_data.append({'Category': 'Computed Closing Balance', 'Amount': f'₹{computed_closing:,.2f}'})
         if closing_balance is not None:
             summary_data.append({'Category': 'Actual Closing Balance', 'Amount': f'₹{closing_balance:,.2f}'})
+        summary_data.append({'Category': 'Target Date', 'Amount': target_date.strftime('%d-%m-%Y %H:%M IST')})
         summary_data.append({'Category': 'Total Principal Due (Overdue)', 'Amount': f'₹{total_principal:,.2f}'})
         summary_data.append({'Category': 'Total Interest Accrued', 'Amount': f'₹{total_interest:,.2f}'})
         summary_data.append({'Category': 'GST (18% on Interest)', 'Amount': f'₹{gst:,.2f}'})
@@ -340,18 +380,18 @@ def generate_excel(overdue_with_interest, pending_credits, opening_balance, clos
 
 # Streamlit app
 def main():
-    st.title("Financial Transaction Analysis")
-    st.markdown("Upload a CSV file to calculate overdue amounts with **18% per day interest**. View results, a pie chart, and download an Excel report.")
+    st.title("Financial Transaction Analyzer")
+    st.markdown("Upload a CSV or Excel file to calculate overdue amounts with **18% per day interest**. The target date is the last date in your file. View results, a pie chart, and download an Excel report. *Last updated: 04:28 PM IST, August 15, 2025*")
 
     # Sidebar for file upload
-    st.sidebar.header("Upload CSV")
-    uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv", help="Ensure columns: Date, Debit, Credit, 180 days, optional Particulars")
+    st.sidebar.header("Upload Your Data")
+    uploaded_file = st.sidebar.file_uploader("Choose a file", type=["csv", "xlsx", "xls"], help="Ensure columns: Date, Debit, Credit, 180 days, optional Particulars")
 
     if uploaded_file is not None:
-        st.success("File uploaded successfully!")
-        transactions, opening_balance, closing_balance = read_csv_data(uploaded_file)
+        st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+        transactions, opening_balance, closing_balance = read_file_data(uploaded_file)
         if transactions is None:
-            st.error("Failed to process CSV file. Ensure it has 'Date', 'Debit', 'Credit', '180 days' columns.")
+            st.error("Failed to process file. Ensure it has 'Date', 'Debit', 'Credit', '180 days' columns.")
             return
         if not transactions:
             st.error("No valid transaction data found in the file.")
@@ -359,19 +399,20 @@ def main():
 
         st.write(f"Loaded {len(transactions)} transactions.")
 
-        with st.spinner("Processing data..."):
-            overdue_with_interest, pending_credits, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due = calculate_balances(transactions)
+        with st.spinner("Analyzing financial data..."):
+            overdue_with_interest, pending_credits, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due, target_date = calculate_balances(transactions)
 
-        # Summary Section
-        st.header("Summary", anchor="summary")
+        # Summary Section with Metrics
+        st.header("Financial Summary")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Principal Due", f"₹{total_principal:,.2f}")
         col2.metric("Interest Accrued", f"₹{total_interest:,.2f}")
         col3.metric("GST (18%)", f"₹{gst:,.2f}")
         col4.metric("Total Amount Due", f"₹{total_amount_due:,.2f}")
+        st.write(f"**Target Date:** {target_date.strftime('%d-%m-%Y %H:%M IST')}")
 
-        # Pie Chart for Principal, Interest, GST
-        st.header("Breakdown of Total Amount Due", anchor="pie-chart")
+        # Pie Chart for Breakdown
+        st.header("Breakdown of Total Amount Due")
         if total_principal > 0 or total_interest > 0 or gst > 0:
             chart_data = pd.DataFrame({
                 'Category': ['Principal', 'Interest', 'GST'],
@@ -381,19 +422,25 @@ def main():
                 chart_data,
                 values='Amount',
                 names='Category',
-                title="Total Amount Due Breakdown",
-                color_discrete_sequence=['#1f77b4', '#ff7f0e', '#2ca02c'],
-                hover_data=['Amount'],
+                title="Breakdown of Total Amount Due",
+                color_discrete_sequence=['#3498db', '#e74c3c', '#2ecc71'],
+                hole=0.3,
                 labels={'Amount': '₹ Amount'}
             )
             fig.update_traces(textinfo='percent+label', pull=[0.1, 0, 0], marker=dict(line=dict(color='#000000', width=2)))
-            fig.update_layout(showlegend=True, margin=dict(t=50, b=50, l=50, r=50))
+            fig.update_layout(
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(t=50, b=50, l=50, r=50),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)"
+            )
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.write("No data to display in pie chart.")
 
         # Overdue Credits Table
-        st.header("Overdue Credits", anchor="overdue-credits")
+        st.header("Overdue Credits")
         if overdue_with_interest:
             overdue_df = pd.DataFrame([
                 {
@@ -411,7 +458,7 @@ def main():
             st.write("No overdue amounts found!")
 
         # Pending Credits Table
-        st.header("Pending Credits", anchor="pending-credits")
+        st.header("Pending Credits")
         if pending_credits:
             pending_df = pd.DataFrame([
                 {
@@ -428,16 +475,15 @@ def main():
             st.write("No pending credits found!")
 
         # Download Excel
-        st.header("Download Report", anchor="download")
-        excel_file = generate_excel(overdue_with_interest, pending_credits, opening_balance, closing_balance, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due)
+        st.header("Download Your Report")
+        excel_file = generate_excel(overdue_with_interest, pending_credits, opening_balance, closing_balance, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due, target_date)
         st.download_button(
             label="Download Excel Report",
             data=excel_file,
-            file_name=f"credit_debit_analysis_{uuid.uuid4().hex[:8]}.xlsx",
+            file_name=f"financial_analysis_{uuid.uuid4().hex[:8]}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="download-button"
         )
 
 if __name__ == "__main__":
     main()
-
