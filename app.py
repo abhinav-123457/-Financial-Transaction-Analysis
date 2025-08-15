@@ -65,7 +65,7 @@ st.markdown("""
         border-radius: 10px 0 0 10px;
     }
     .stMetric {
-        background-color: #ffffff;
+        background-color: rgb(38, 39, 48);
         padding: 15px;
         border-radius: 10px;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
@@ -192,16 +192,15 @@ def process_credit_debit_data(data):
         last_date_in_data = max(valid_dates)
     else:
         raise ValueError("No valid dates found in the data")
-    target_date = last_date_in_data.replace(hour=17, minute=4, second=0, microsecond=0)  # 05:04 PM IST
-    daily_rate = 0.18 * 0.18  # Fixed at 3.24% per day
-    for i, credit in enumerate(credits, 1):
-        # Progress bar update
-        st.progress(i / len(credits))
+    target_date = last_date_in_data.replace(hour=16, minute=48, second=0, microsecond=0)  # 04:48 PM IST
+    daily_rate = 0.18 * 0.18  # 18% of 18% per day = 3.24% per day
+    for credit in credits:
         credit_date = credit['date']
         due_date = credit['due_date']
         credit_amount = credit['amount']
         remaining_principal = credit_amount
         matched_debits = []
+        # Match debits to this credit
         for debit in debits:
             if debit['remaining'] <= 0 or debit['date'] < credit_date:
                 continue
@@ -212,12 +211,14 @@ def process_credit_debit_data(data):
                 'allocated': alloc,
                 'original_date': debit['original_date']
             })
-            debit['remaining'] -= alloc
+            debit['remaining'] -= alloc  # Ensure debit is used only once
             remaining_principal -= alloc
+        # Calculate payments within 180 days
         paid_on_time = sum(match['allocated'] for match in matched_debits if match['payment_date'] <= due_date)
         late_payments = [match for match in matched_debits if match['payment_date'] > due_date]
         unpaid_at_due = credit_amount - paid_on_time
         if unpaid_at_due <= 0:
+            # Credit fully paid on time or not yet due
             if remaining_principal > 0:
                 days_remaining = max((due_date - target_date).days, 0)
                 pending_credits.append({
@@ -229,19 +230,20 @@ def process_credit_debit_data(data):
                     'matched_debits': matched_debits
                 })
             continue
+        # Calculate interest on original unpaid amount after due date
         balance = unpaid_at_due
         current_date = due_date
         interest = 0.0
         for late in late_payments:
             days = max((late['payment_date'] - current_date).days, 0)
-            interest += unpaid_at_due * daily_rate * days
+            interest += unpaid_at_due * daily_rate * days  # Interest on original unpaid amount
             balance -= late['allocated']
             current_date = late['payment_date']
             if balance <= 0:
                 break
         if balance > 0:
             days = max((target_date - current_date).days, 0)
-            interest += unpaid_at_due * daily_rate * days
+            interest += unpaid_at_due * daily_rate * days  # Interest on original unpaid amount
         total_due = balance + interest
         overdue_with_interest.append({
             'credit_date': credit['original_date'],
@@ -337,16 +339,13 @@ def display_results(overdue_with_interest, pending_credits, opening_balance, clo
 def main():
     st.set_page_config(page_title="Credit-Debit Analysis Tool", layout="wide")
     st.title("Credit-Debit Analysis Tool")
-    st.markdown("Upload an Excel file to analyze credit and debit transactions, calculate interest (18% of 18% daily on overdue amounts), and download the results. *Last updated: 05:04 PM IST, August 15, 2025*")
-
-    # Sidebar for custom inputs
-    st.sidebar.header("Settings")
-    target_date_override = st.sidebar.date_input("Override Target Date", value=None)
+    st.markdown("Upload an Excel file to analyze credit and debit transactions, calculate interest (18% of 18% daily on overdue amounts), and download the results. *Last updated: 04:48 PM IST, August 15, 2025*")
 
     # File uploader
     uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
     if uploaded_file is not None:
+        # Read Excel file to get sheet names
         xl = pd.ExcelFile(uploaded_file)
         sheet_names = xl.sheet_names
         sheet_name = st.selectbox("Select Sheet", ["First Sheet"] + sheet_names, index=0)
@@ -368,8 +367,6 @@ def main():
                 # Process data
                 with st.spinner("Processing data..."):
                     overdue_amounts, pending_credits, total_credits, total_debits, target_date = process_credit_debit_data(transaction_data)
-                    if target_date_override:
-                        target_date = datetime.combine(target_date_override, datetime.min.time()).replace(hour=17, minute=4, second=0)
                     output_buffer = display_results(overdue_amounts, pending_credits, opening_balance, closing_balance, total_credits, total_debits, target_date)
                 
                 # Display summary metrics
@@ -411,17 +408,6 @@ def main():
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.write("No data to display in pie chart.")
-
-                # Line Chart for Trends
-                st.header("Transaction Trends")
-                dates = [datetime.strptime(t['Date'], '%d-%m-%Y') for t in transaction_data]
-                credits = [t['Credit'] for t in transaction_data if t['Credit'] > 0]
-                debits = [t['Debit'] for t in transaction_data if t['Debit'] > 0]
-                trend_data = pd.DataFrame({'Date': dates, 'Credits': credits, 'Debits': debits})
-                trend_data = trend_data.groupby(trend_data['Date'].dt.to_period('M').astype(str)).sum().reset_index()
-                trend_data['Date'] = pd.to_datetime(trend_data['Date'])
-                fig = px.line(trend_data, x='Date', y=['Credits', 'Debits'], title="Credit and Debit Trends")
-                st.plotly_chart(fig, use_container_width=True)
 
                 # Display summary
                 st.subheader("Summary")
@@ -478,3 +464,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
