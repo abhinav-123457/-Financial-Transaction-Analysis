@@ -363,24 +363,28 @@ def generate_excel(overdue_with_interest, pending_credits, opening_balance, clos
             pending_df.to_excel(writer, sheet_name='Pending Credits', index=False)
         else:
             pd.DataFrame([{'Message': 'No pending credits found!'}]).to_excel(writer, sheet_name='Pending Credits', index=False)
+# Summary DataFrame in app
+summary_data = []
+if opening_balance is not None:
+    summary_data.append({'Category': 'Opening Balance', 'Amount': f'₹{opening_balance:,.2f}'})
+summary_data.append({'Category': 'Total Credits Processed', 'Amount': f'₹{total_credits:,.2f}'})
+summary_data.append({'Category': 'Total Debits Processed', 'Amount': f'₹{total_debits:,.2f}'})
+if opening_balance is not None:
+    computed_closing = opening_balance + total_credits - total_debits
+    summary_data.append({'Category': 'Computed Closing Balance', 'Amount': f'₹{computed_closing:,.2f}'})
+if closing_balance is not None:
+    summary_data.append({'Category': 'Actual Closing Balance', 'Amount': f'₹{closing_balance:,.2f}'})
+summary_data.append({'Category': 'Target Date', 'Amount': target_date.strftime('%d-%m-%Y %H:%M IST')})
+summary_data.append({'Category': 'Total Principal Due (Overdue)', 'Amount': f'₹{total_principal:,.2f}'})
+summary_data.append({'Category': 'Total Interest Accrued', 'Amount': f'₹{total_interest:,.2f}'})
+summary_data.append({'Category': 'GST (18% on Interest)', 'Amount': f'₹{gst:,.2f}'})
+summary_data.append({'Category': 'Total Amount Due', 'Amount': f'₹{total_amount_due:,.2f}'})
 
-        summary_data = []
-        if opening_balance is not None:
-            summary_data.append({'Category': 'Opening Balance', 'Amount': f'₹{opening_balance:,.2f}'})
-        summary_data.append({'Category': 'Total Credits Processed', 'Amount': f'₹{total_credits:,.2f}'})
-        summary_data.append({'Category': 'Total Debits Processed', 'Amount': f'₹{total_debits:,.2f}'})
-        if opening_balance is not None:
-            computed_closing = opening_balance + total_credits - total_debits
-            summary_data.append({'Category': 'Computed Closing Balance', 'Amount': f'₹{computed_closing:,.2f}'})
-        if closing_balance is not None:
-            summary_data.append({'Category': 'Actual Closing Balance', 'Amount': f'₹{closing_balance:,.2f}'})
-        summary_data.append({'Category': 'Target Date', 'Amount': target_date.strftime('%d-%m-%Y %H:%M IST')})
-        summary_data.append({'Category': 'Total Principal Due (Overdue)', 'Amount': f'₹{total_principal:,.2f}'})
-        summary_data.append({'Category': 'Total Interest Accrued', 'Amount': f'₹{total_interest:,.2f}'})
-        summary_data.append({'Category': 'GST (18% on Interest)', 'Amount': f'₹{gst:,.2f}'})
-        summary_data.append({'Category': 'Total Amount Due (Principal + Interest + GST)', 'Amount': f'₹{total_amount_due:,.2f}'})
-        summary_df = pd.DataFrame(summary_data)
-        summary_df.to_excel(writer, sheet_name='Balance Summary', index=False)
+summary_df = pd.DataFrame(summary_data)
+
+st.header("Balance Summary")
+st.dataframe(summary_df, use_container_width=True)
+
 
     output.seek(0)
     return output
@@ -494,3 +498,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
