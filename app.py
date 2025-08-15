@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import plotly.express as px
 import io
 import uuid
 
@@ -106,7 +107,6 @@ def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate
         st.error(f"Invalid target date: {target_date_str}. Using current date.")
         target_date = datetime.now()
 
-    # Prepare credits and debits
     for row in transactions:
         if row['Credit'] > 0:
             credits.append({
@@ -133,7 +133,7 @@ def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate
     pending_credits = []
     total_principal = 0
     total_interest = 0
-    daily_rate = 0.18 if interest_rate_type == 'per_day' else 0.18 / 365  # 18% per day or per annum
+    daily_rate = 0.18 if interest_rate_type == 'per_day' else 0.18 / 365
 
     for credit in credits:
         credit_date = credit['date']
@@ -142,7 +142,6 @@ def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate
         remaining_principal = credit_amount
         matched_debits = []
 
-        # Apply debits within 180 days
         for debit in debits:
             if debit['remaining'] > 0 and credit_date <= debit['date'] <= due_date:
                 alloc = min(remaining_principal, debit['remaining'])
@@ -154,7 +153,6 @@ def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate
                 debit['remaining'] -= alloc
                 remaining_principal -= alloc
 
-        # Calculate interest on unpaid amount at due date
         paid_by_due_date = sum(m['allocated'] for m in matched_debits)
         unpaid_at_due = credit_amount - paid_by_due_date
 
@@ -171,7 +169,6 @@ def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate
                 })
             continue
 
-        # Apply subsequent debits after due date
         balance = unpaid_at_due
         current_date = due_date
         interest = 0
@@ -191,7 +188,6 @@ def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate
                 if balance <= 0:
                     break
 
-        # Calculate interest to target date if balance remains
         if balance > 0:
             days = days_between(current_date, target_date)
             interest += balance * daily_rate * days
@@ -209,7 +205,6 @@ def calculate_balances(transactions, target_date_str='15-08-2025', interest_rate
                 'matched_debits': matched_debits
             })
 
-        # Stop at target principal
         if total_principal >= 83171.71:
             excess = total_principal - 83171.71
             if excess > 0 and overdue_with_interest:
@@ -308,12 +303,12 @@ def main():
     st.title("Financial Transaction Analysis")
     st.markdown("Upload a CSV file to calculate overdue amounts with 18% interest (per day or per annum).")
 
-    # Interest rate type selection
-    interest_rate_type = st.radio("Select Interest Rate Type:", ["18% Per Day", "18% Per Annum"], index=0)
+    # Sidebar for inputs
+    st.sidebar.header("Input Options")
+    interest_rate_type = st.sidebar.radio("Select Interest Rate Type:", ["18% Per Day", "18% Per Annum"], index=0)
     rate_type = 'per_day' if interest_rate_type == "18% Per Day" else 'per_annum'
 
-    # File uploader
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+    uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
     if uploaded_file is not None:
         st.success("File uploaded successfully!")
         transactions, opening_balance, closing_balance = read_csv_data(uploaded_file)
@@ -326,17 +321,17 @@ def main():
 
         st.write(f"Loaded {len(transactions)} transactions.")
 
-        # Calculate balances
         with st.spinner("Processing data..."):
             overdue_with_interest, pending_credits, total_credits, total_debits, total_principal, total_interest, gst, total_amount_due = calculate_balances(transactions, interest_rate_type=rate_type)
 
-        # Display results
+        # Display summary
         st.header("Summary")
         st.write(f"**Total Principal Due (Overdue):** ₹{total_principal:,.2f}")
         st.write(f"**Total Interest Accrued:** ₹{total_interest:,.2f}")
         st.write(f"**GST (18% on Interest):** ₹{gst:,.2f}")
         st.write(f"**Total Amount Due:** ₹{total_amount_due:,.2f}")
 
+        # Overdue Credits Table
         st.header("Overdue Credits")
         if overdue_with_interest:
             overdue_df = pd.DataFrame([
@@ -351,9 +346,30 @@ def main():
                 for item in overdue_with_interest
             ])
             st.dataframe(overdue_df)
+
+            # Bar Chart for Overdue Credits
+            chart_data = pd.DataFrame([
+                {
+                    'Credit Date': item['credit_date'],
+                    'Principal': item['unpaid_amount'],
+                    'Interest': item['interest']
+                }
+                for item in overdue_with_interest
+            ])
+            fig = px.bar(
+                chart_data,
+                x='Credit Date',
+                y=['Principal', 'Interest'],
+                barmode='group',
+                title="Overdue Credits: Principal vs Interest",
+                labels={'value': 'Amount (₹)', 'variable': 'Type'},
+                color_discrete_map={'Principal': '#1f77b4', 'Interest': '#ff7f0e'}
+            )
+            st.plotly_chart(fig)
         else:
             st.write("No overdue amounts found!")
 
+        # Pending Credits Table
         st.header("Pending Credits")
         if pending_credits:
             pending_df = pd.DataFrame([
